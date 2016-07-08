@@ -20,6 +20,18 @@ var Predictor = {
         this.preffix = preffix;
         var tmp = JSON.stringify(this);
         var tmpObj = JSON.parse(tmp);
+        tmpObj.load = this.load;
+        tmpObj._callAjax = this._callAjax;
+        tmpObj.save = this.save;
+        tmpObj._generateKnowledge = this._generateKnowledge;
+        tmpObj.decide = this.decide;
+        tmpObj.learn = this.learn;
+        tmpObj.addVariant = this.addVariant;
+        tmpObj.forget = this.forget;
+        tmpObj.addStep = this.addStep;
+        tmpObj._flatterizeOneStep = this._flatterizeOneStep;
+        tmpObj._flatterizeSteps = this._flatterizeSteps;
+        tmpObj.getBestDecision = this.getBestDecision;
         tmpObj.load();
         return tmpObj;
     },
