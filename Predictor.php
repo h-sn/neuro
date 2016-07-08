@@ -1,13 +1,13 @@
 <?php
 /**
- * Predictor v 1.0.0
+ * Predictor v 1.1.2
  * Sergey Ostapchik 2016
  * Public Profile https://www.linkedin.com/in/sergoman
  */
 class Predictor {
 
     public $limit = 100;
-    public $knowledge = array();
+    public $knowledge = null;
     public $steps = array();
     private $_flat_steps = array();
     public $variants = array();
@@ -21,6 +21,9 @@ class Predictor {
         $this->variants = $variants;
         $this->preffix = $preffix;
         $this->steps = $steps;
+        $this->knowledge = new StdClass();
+        $this->knowledge->data = array();
+        $this->knowledge->variants = array();
         $this->load();
         $this->_flatterizeSteps();
     }
@@ -31,19 +34,15 @@ class Predictor {
      */
     public function load()
     {
-        if( ! count($this->knowledge)) {
-            $knowledgeFile = 'knowledges/'.$this->preffix."_".count($this->variants)."_".count($this->steps).'.dat';
+        if(count($this->knowledge->variants) != count($this->variants)) {
+            $knowledgeFile = 'knowledges/'.$this->preffix."_".count($this->variants)."_".count($this->steps).'.json';
             if(file_exists($knowledgeFile)) {
-                $this->knowledge = unserialize(file_get_contents($knowledgeFile));
+                $this->knowledge = json_decode(file_get_contents($knowledgeFile));
                 return $this;
             }
 
-            foreach($this->variants as $variant) {
-                for($x = 0; $x < count($this->steps);$x++) {
-                    foreach($this->variants as $xVar) {
-                        $this->knowledge[$variant][$x][$xVar] = 0;
-                    }
-                }
+            foreach($this->variants as $key => $variant) {
+                $this->addVariant($variant);
             }
 
             $this->save();
@@ -59,8 +58,8 @@ class Predictor {
     public function save()
     {
         //Вместо использования файлов можно сохранять знания в базу данных
-        $data = serialize($this->knowledge);
-        $knowledgeFile = 'knowledges/'.$this->preffix."_".count($this->variants)."_".count($this->steps).'.dat';
+        $data = json_encode($this->knowledge);
+        $knowledgeFile = 'knowledges/'.$this->preffix."_".count($this->variants)."_".count($this->steps).'.json';
         file_put_contents($knowledgeFile,$data);
         return $this;
     }
@@ -80,6 +79,17 @@ class Predictor {
         return $max['variant'];
     }
 
+    public function addVariant($variant)
+    {
+        $this->knowledge->variants[] = $variant;
+        $key = array_search($variant,$this->knowledge->variants);
+        for($x = 0; $x < count($this->steps);$x++) {
+            foreach($this->variants as $keyVar => $xVar) {
+                $this->knowledge->data[$key][$x][$keyVar] = 0;
+            }
+        }
+        return $key;
+    }
     /**
      * Запомнить решение
      * @param      $decision
@@ -98,11 +108,16 @@ class Predictor {
         if($best && $best != $decision) {
             $this->forget($best);
         }
+        $keyVar = array_search($decision,$this->knowledge->variants);
+        if($keyVar === false) {
+            $keyVar = $this->addVariant($decision);
+            $this->_flatterizeSteps();
+        }
 
         for($x = 0; $x < count($this->steps);$x++) {
-            foreach($this->variants as $xVar) {
+            foreach($this->variants as $key => $xVar) {
                 //Повышаем вес
-                $this->knowledge[$decision][$x][$xVar] += (float)$this->_flat_steps[$x][$xVar] / 2;
+                $this->knowledge->data[$keyVar][$x][$key] += (float)$this->_flat_steps[$x][$key] / 2;
             }
         }
 
@@ -124,9 +139,13 @@ class Predictor {
      */
     public function forget($decision)
     {
+        $keyVar = array_search($decision,$this->knowledge->variants);
+        if($keyVar === false) {
+            $keyVar = $this->addVariant($decision);
+        }
         for($x = 0; $x < count($this->steps);$x++) {
-            foreach($this->variants as $xVar) {
-                $this->knowledge[$decision][$x][$xVar] -= (float)$this->_flat_steps[$x][$xVar] / 4;
+            foreach($this->variants as $key => $xVar) {
+                $this->knowledge->data[$keyVar][$x][$key] -= (float)$this->_flat_steps[$x][$key] / 4;
             }
         }
     }
@@ -141,11 +160,11 @@ class Predictor {
     {
         $this->decisions = array();
 
-        foreach($this->variants as $variant) {
+        foreach($this->knowledge->variants as $keyVar => $variant) {
             $sum = 0;
             for($x = 0; $x < count($this->steps);$x++) {
-                foreach($this->variants as $xVar) {
-                    $sum += (float)$this->knowledge[$variant][$x][$xVar] * $this->_flat_steps[$x][$xVar];
+                foreach($this->variants as $key => $xVar) {
+                    $sum += (float)$this->knowledge->data[$keyVar][$x][$key] * $this->_flat_steps[$x][$key];
                 }
             }
 
@@ -186,11 +205,11 @@ class Predictor {
     protected function _flatterizeOneStep($step)
     {
         $data = array();
-        foreach($this->variants as $variant) {
+        foreach($this->variants as $keyVar => $variant) {
             if($step == $variant) {
-                $data[$variant] = 1;
+                $data[$keyVar] = 1;
             } else {
-                $data[$variant] = 0;
+                $data[$keyVar] = 0;
             }
         }
         return $data;
