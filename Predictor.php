@@ -1,12 +1,13 @@
 <?php
 /**
- * Predictor v 1.1.2
+ * Predictor v 1.1.4
  * Sergey Ostapchik 2016
  * Public Profile https://www.linkedin.com/in/sergoman
  */
 class Predictor {
 
     public $limit = 100;
+    public $minLimit = 50;
     public $knowledge = null;
     public $steps = array();
     private $_flat_steps = array();
@@ -14,7 +15,7 @@ class Predictor {
     public $decisions = array();
     public $preffix = '';
     public $fastLearn = true;
-
+    public $useART = true;
 
     public function __construct($steps, $variants, $preffix = '')
     {
@@ -85,7 +86,7 @@ class Predictor {
         $key = array_search($variant,$this->knowledge->variants);
         for($x = 0; $x < count($this->steps);$x++) {
             foreach($this->variants as $keyVar => $xVar) {
-                $this->knowledge->data[$key][$x][$keyVar] = 0;
+                $this->knowledge->data[$key][$x][$keyVar] = rand(10,50)/100;
             }
         }
         return $key;
@@ -114,6 +115,24 @@ class Predictor {
             $this->_flatterizeSteps();
         }
 
+        if($this->useART) {
+            $tmpSteps = $this->_flat_steps;
+            foreach($this->knowledge->variants as $key_dec => $dec) {
+                if($dec == $decision) {
+                    continue;
+                }
+                for ($x = 0; $x < count($this->steps); $x++) {
+                    foreach ($this->variants as $key => $xVar) {
+                        if($this->knowledge->data[$key_dec][$x][$key] > 5) {
+                            $this->_flat_steps[$x][$key] = round((float)$this->_flat_steps[$x][$key] / 1.1,2);
+                        } else {
+                            $this->_flat_steps[$x][$key] = round((float)$this->_flat_steps[$x][$key] / 0.8,2);
+                        }
+                    }
+                }
+            }
+        }
+
         for($x = 0; $x < count($this->steps);$x++) {
             foreach($this->variants as $key => $xVar) {
                 //Повышаем вес
@@ -121,6 +140,9 @@ class Predictor {
             }
         }
 
+        if($this->useART) {
+             $this->_flat_steps = $tmpSteps;
+        }
         //ускоренное обучение
         if($this->fastLearn) {
             $best = $this->decide(true);
@@ -143,10 +165,33 @@ class Predictor {
         if($keyVar === false) {
             $keyVar = $this->addVariant($decision);
         }
+
+        if($this->useART) {
+            $tmpSteps = $this->_flat_steps;
+            foreach($this->knowledge->variants as $key_dec => $dec) {
+                if($dec == $decision) {
+                    continue;
+                }
+                for ($x = 0; $x < count($this->steps); $x++) {
+                    foreach ($this->variants as $key => $xVar) {
+                        if($this->knowledge->data[$key_dec][$x][$key] > 5) {
+                            $this->_flat_steps[$x][$key] = round((float)$this->_flat_steps[$x][$key] / 1.1,2);
+                        } else {
+                            $this->_flat_steps[$x][$key] = round((float)$this->_flat_steps[$x][$key] / 0.8,2);
+                        }
+                    }
+                }
+            }
+        }
+
         for($x = 0; $x < count($this->steps);$x++) {
             foreach($this->variants as $key => $xVar) {
                 $this->knowledge->data[$keyVar][$x][$key] -= (float)$this->_flat_steps[$x][$key] / 4;
             }
+        }
+
+        if($this->useART) {
+            $this->_flat_steps = $tmpSteps;
         }
     }
 
@@ -176,7 +221,9 @@ class Predictor {
                 }
                 continue;
             }
-            $this->decisions[] = array('sum'=>$sum,'variant'=>$variant);
+            if($sum > $this->minLimit) {
+                $this->decisions[] = array('sum'=>$sum,'variant'=>$variant);
+            }
         }
         //Возвращаем один наилучший вариант
         return $this->getBestDecision();

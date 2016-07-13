@@ -1,11 +1,13 @@
 /**
- * Predictor v 1.1.2
+ * Predictor v 1.1.4
  * Sergey Ostapchik 2016
  * Public Profile https://www.linkedin.com/in/sergoman
- * @type {{limit: number, knowledge: Array, steps: Array, _flat_steps: Array, variants: Array, decisions: Array, preffix: string, fastLearn: boolean, init: Predictor.init, load: Predictor.load, save: Predictor.save, decide: Predictor.decide, getBestDecision: Predictor.getBestDecision, learn: Predictor.learn, forget: Predictor.forget, addStep: Predictor.addStep, _flatterizeSteps: Predictor._flatterizeSteps, _flatterizeOneStep: Predictor._flatterizeOneStep}}
+ * @type {{limit: number, minLimit: number, knowledge: {variants: Array, data: Array}, steps: Array, _flat_steps: Array, variants: Array, decisions: Array, preffix: string, fastLearn: boolean, useAjax: boolean, useART: boolean, init: Predictor.init, _callAjax: Predictor._callAjax, load: Predictor.load, _generateKnowledge: Predictor._generateKnowledge, save: Predictor.save, decide: Predictor.decide, getBestDecision: Predictor.getBestDecision, addVariant: Predictor.addVariant, learn: Predictor.learn, forget: Predictor.forget, addStep: Predictor.addStep, _flatterizeSteps: Predictor._flatterizeSteps, _flatterizeOneStep: Predictor._flatterizeOneStep}}
  */
+
 var Predictor = {
-    limit: 100,
+    limit: 200,
+    minLimit: 50,
     knowledge: {variants:[],data:[]},
     steps: [],
     _flat_steps: [],
@@ -14,6 +16,7 @@ var Predictor = {
     preffix: '',
     fastLearn: false,
     useAjax: false,
+    useART: true,
     init: function(steps, variants, preffix) {
         this.steps = steps;
         this.variants = variants;
@@ -123,13 +126,15 @@ var Predictor = {
             }
 
             if(limit === true) {
-                if(this.limit <= sum) {
+                if(this.limit < sum) {
                     this.decisions[sum] = {variant: this.variants[i],sum:sum};
                 }
                 continue;
             }
 
-            this.decisions[sum] = {variant: this.variants[i],sum:sum};
+            if(this.minLimit < sum) {
+                this.decisions[sum] = {variant: this.variants[i],sum:sum};
+            }
         }
         return this.getBestDecision();
     },
@@ -151,7 +156,7 @@ var Predictor = {
         for(var x = 0; x < this.steps.length; x ++) {
             this.knowledge.data[dec_key][x] = [];
             for(var xVar = 0; xVar < this.variants.length; xVar++) {
-                this.knowledge.data[dec_key][x][xVar] = 0;
+                this.knowledge.data[dec_key][x][xVar] = Math.round(Math.random()*100)/500;
             }
         }
         return dec_key;
@@ -165,22 +170,48 @@ var Predictor = {
         if(best && best != decision) {
             this.forget(best);
         }
+
         var dec_key = this.knowledge.variants.indexOf(decision);
         if(dec_key < 0) {
             dec_key = this.addVariant(decision);
             this._flatterizeSteps();
         }
+
+        if(this.useART) {
+            var tmpSteps = this._flat_steps;
+            for (var q = 0; q < this.knowledge.variants.length; q++) {
+                if(this.knowledge.variants[q] == decision) {
+                    continue;
+                }
+                for(var s = 0; s < this.steps.length; s++) {
+                    for (var i = 0; i < this.knowledge.variants.length; i++) {
+                        if(this.knowledge.data[q][s][i] > 5) {
+                            this._flat_steps[s][i] = Math.round(this._flat_steps[s][i]/1.1 * 100) / 100;
+                        } else {
+                            this._flat_steps[s][i] = Math.round(this._flat_steps[s][i]/0.8 * 10) / 10;
+                        }
+                    }
+                }
+            }
+        }
+
         for(var x = 0; x < this.steps.length; x++) {
             for(var xVar = 0; xVar < this.variants.length;xVar++) {
                 this.knowledge.data[dec_key][x][xVar] += (this._flat_steps[x][xVar] / 2);
             }
         }
 
+        if(this.useART) {
+            this._flat_steps = tmpSteps;
+        }
+
         if(this.fastLearn) {
             best = this.decide(true);
         }
 
+
         if(this.fastLearn && best != decision) {
+
             return this.learn(decision,forgetFlag);
         }
         this.save();
@@ -191,11 +222,35 @@ var Predictor = {
             this.addVariant(decision);
             this._flatterizeSteps();
         }
-        for(var x = 0; x < this.steps.length; x++) {
-            for(var xVar = 0; xVar < this.variants.length;xVar++) {
-                this.knowledge.data[dec_key][x][xVar] -= (this._flat_steps[x][xVar] / 4);
+
+        if(this.useART) {
+            var tmpSteps = this._flat_steps;
+            for (var q = 0; q < this.knowledge.variants.length; q++) {
+                if(this.knowledge.variants[q] == decision) {
+                    continue;
+                }
+                for(var s = 0; s < this.steps.length; s++) {
+                    for (var i = 0; i < this.knowledge.variants.length; i++) {
+                        if(this.knowledge.data[q][s][i] > 5) {
+                            this._flat_steps[s][i] = Math.round(this._flat_steps[s][i]/1.1 * 100) / 100;
+                        } else {
+                            this._flat_steps[s][i] = Math.round(this._flat_steps[s][i]/0.8 * 10) / 10;
+                        }
+                    }
+                }
             }
         }
+
+        for(var x = 0; x < this.steps.length; x++) {
+            for(var xVar = 0; xVar < this.variants.length;xVar++) {
+                this.knowledge.data[dec_key][x][xVar] -= (this._flat_steps[x][xVar] / 10);
+            }
+        }
+
+        if(this.useART) {
+            this._flat_steps = tmpSteps;
+        }
+
     },
     addStep: function(step) {
         if(this.steps.length == this.variants.length-1) {

@@ -12,7 +12,7 @@ $predictor
 <html>
 <head>
     <script type="text/javascript" src="predictor.js"></script>
-    <title>Predictor - 1.1.2</title>
+    <title>Predictor - 1.1.4</title>
 </head>
 <body>
 <h1>Predictor</h1>
